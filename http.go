@@ -72,6 +72,7 @@ func (hp *HTTPParser) Parse(input []byte) (int, error) {
 	var headers int
 	var path int
 	var ok bool
+	hp.hostRead, hp.contentLengthRead = false, false
 
 	total := len(input)
 
