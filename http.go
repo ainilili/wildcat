@@ -61,6 +61,10 @@ const (
 	eMLHeaderValue
 )
 
+func (hp *HTTPParser) Reset() {
+	hp.hostRead, hp.contentLengthRead = false, false
+}
+
 // Parse the buffer as an HTTP Request. The buffer must contain the entire
 // request or Parse will return ErrMissingData for the caller to get more
 // data. (this thusly favors getting a completed request in a single Read()
@@ -72,7 +76,6 @@ func (hp *HTTPParser) Parse(input []byte) (int, error) {
 	var headers int
 	var path int
 	var ok bool
-	hp.hostRead, hp.contentLengthRead = false, false
 
 	total := len(input)
 
