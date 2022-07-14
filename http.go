@@ -63,6 +63,7 @@ const (
 
 func (hp *HTTPParser) Reset() {
 	hp.hostRead, hp.contentLengthRead = false, false
+	hp.Headers = hp.Headers[:0]
 }
 
 // Parse the buffer as an HTTP Request. The buffer must contain the entire
