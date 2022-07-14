@@ -2,10 +2,9 @@ package wildcat
 
 import (
 	"bytes"
+	"github.com/vektra/errors"
 	"io"
 	"strconv"
-
-	"github.com/vektra/errors"
 )
 
 const OptimalBufferSize = 1500
@@ -17,15 +16,7 @@ type header struct {
 
 type HTTPParser struct {
 	Method, Path, Version []byte
-
-	Headers      []header
-	TotalHeaders int
-
-	host     []byte
-	hostRead bool
-
-	contentLength     int64
-	contentLengthRead bool
+	contentLength         int64
 }
 
 const DefaultHeaderSlice = 10
@@ -38,8 +29,6 @@ func NewHTTPParser() *HTTPParser {
 // Create a new parser allocating size for size headers
 func NewSizedHTTPParser(size int) *HTTPParser {
 	return &HTTPParser{
-		Headers:       make([]header, size),
-		TotalHeaders:  size,
 		contentLength: -1,
 	}
 }
@@ -62,8 +51,7 @@ const (
 )
 
 func (hp *HTTPParser) Reset() {
-	hp.hostRead, hp.contentLengthRead = false, false
-	hp.Headers = hp.Headers[:0]
+	hp.contentLength = 0
 }
 
 // Parse the buffer as an HTTP Request. The buffer must contain the entire
@@ -147,8 +135,6 @@ loop:
 		return 0, ErrMissingData
 	}
 
-	var h int
-
 	var headerName []byte
 
 	state := eNextHeader
@@ -197,15 +183,11 @@ loop:
 			default:
 				continue
 			}
-
-			hp.Headers[h] = header{headerName, input[start:i]}
-			h++
-
-			if h == hp.TotalHeaders {
-				newHeaders := make([]header, hp.TotalHeaders+10)
-				copy(newHeaders, hp.Headers)
-				hp.Headers = newHeaders
-				hp.TotalHeaders += 10
+			if headerName[0] == 'C' && bytes.Equal(headerName, cContentLength) {
+				i, err := strconv.ParseInt(string(input[start:i]), 10, 0)
+				if err == nil {
+					hp.contentLength = i
+				}
 			}
 		case eHeaderValueN:
 			if input[i] != '\n' {
@@ -231,81 +213,15 @@ loop:
 				continue
 			}
 
-			cur := hp.Headers[h-1].Value
-
-			newheader := make([]byte, len(cur)+1+(i-start))
-			copy(newheader, cur)
-			copy(newheader[len(cur):], []byte(" "))
-			copy(newheader[len(cur)+1:], input[start:i])
-
-			hp.Headers[h-1].Value = newheader
 		}
 	}
 
 	return 0, ErrMissingData
 }
 
-// Return a value of a header matching name.
-func (hp *HTTPParser) FindHeader(name []byte) []byte {
-	for _, header := range hp.Headers {
-		if bytes.Equal(header.Name, name) {
-			return header.Value
-		}
-	}
-
-	for _, header := range hp.Headers {
-		if bytes.EqualFold(header.Name, name) {
-			return header.Value
-		}
-	}
-
-	return nil
-}
-
-// Return all values of a header matching name.
-func (hp *HTTPParser) FindAllHeaders(name []byte) [][]byte {
-	var headers [][]byte
-
-	for _, header := range hp.Headers {
-		if bytes.EqualFold(header.Name, name) {
-			headers = append(headers, header.Value)
-		}
-	}
-
-	return headers
-}
-
-var cHost = []byte("Host")
-
-// Return the value of the Host header
-func (hp *HTTPParser) Host() []byte {
-	if hp.hostRead {
-		return hp.host
-	}
-
-	hp.hostRead = true
-	hp.host = hp.FindHeader(cHost)
-	return hp.host
-}
-
 var cContentLength = []byte("Content-Length")
 
-// Return the value of the Content-Length header.
-// A value of -1 indicates the header was not set.
 func (hp *HTTPParser) ContentLength() int64 {
-	if hp.contentLengthRead {
-		return hp.contentLength
-	}
-
-	header := hp.FindHeader(cContentLength)
-	if header != nil {
-		i, err := strconv.ParseInt(string(header), 10, 0)
-		if err == nil {
-			hp.contentLength = i
-		}
-	}
-
-	hp.contentLengthRead = true
 	return hp.contentLength
 }
 
